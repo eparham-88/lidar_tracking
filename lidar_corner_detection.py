@@ -124,7 +124,7 @@ def describe_keypoints(filename, kp):
         #       str(x) + ', ' + str(y) + ', ' + str(z) + ')')
 
         # append x, y, z as the description for least norm brute force
-        des.append([x, y, z, 100*u, 100*v])
+        des.append([x, y, z, u, v])
 
         # append key point to new list
         kp_filtered.append(kp[i])
