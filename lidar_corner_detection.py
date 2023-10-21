@@ -100,7 +100,7 @@ def describe_keypoints(filename, kp):
 
     # Grab depth image
     wd = os.getcwd()
-    depth_img = cv2.imread(os.path.join(wd,'GGB_Hallway_lidar_camera/range',filename), cv2.COLOR_BGR2RGB)
+    depth_img = cv2.imread(os.path.join(wd,'2023_10_21_04_10_PM_lidar_camera/range',filename), cv2.COLOR_BGR2RGB)
 
     des = []
     kp_filtered = [] # will store filtered keypoints
@@ -183,7 +183,7 @@ def ORB_detections(folder):
         
         good_matches = []
         for m, n in matches:
-            if m.distance < 0.35 * n.distance:
+            if m.distance < 0.25 * n.distance:
                 good_matches.append(m)
 
         img3 = cv2.drawMatches(img1,kp1,img2,kp2,good_matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
@@ -192,7 +192,8 @@ def ORB_detections(folder):
         img2_annotated = magnify(cv2.rotate(img2_annotated, cv2.ROTATE_90_CLOCKWISE))
         cv2.imshow('detections', img2_annotated)
 
-        scaled = magnify(cv2.rotate(img3, cv2.ROTATE_90_CLOCKWISE))
+        # scaled = magnify(cv2.rotate(img3, cv2.ROTATE_90_CLOCKWISE))
+        scaled = cv2.rotate(img3, cv2.ROTATE_90_CLOCKWISE)
         cv2.imshow('img', scaled)
 
 
@@ -243,4 +244,4 @@ if __name__=="__main__":
     # process_folder('APT_lidar_camera/reflec')
     # AKAZE_detections('APT_lidar_camera/reflec')
     # FAST_detections('APT_lidar_camera/reflec')
-    ORB_detections('GGB_Hallway_lidar_camera/reflec')
+    ORB_detections('2023_10_21_04_10_PM_lidar_camera/reflec')
