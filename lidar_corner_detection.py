@@ -80,12 +80,14 @@ def FAST_detections(folder):
         img2 = img1
 
 
-# From https://math.libretexts.org/Courses/Monroe_Community_College/MTH_212_Calculus_III/Chapter_11%3A_Vectors_and_the_Geometry_of_Space/11.7%3A_Cylindrical_and_Spherical_Coordinates
+# From https://data.ouster.io/downloads/software-user-manual/firmware-user-manual-v3.0.1.pdf
+# Page 22
 def world_coordinate(u, v, depth):
+
     h_res = 1024
-    v_res = 16
+    v_res = 128
     h_range = 2*np.pi
-    v_range = np.pi / 4
+    v_range = np.pi / 2
 
     theta = (1.5*h_range) - (u / h_res)*h_range
     psi   = ((np.pi - v_range)/2) + (v / v_res)*v_range
@@ -114,7 +116,7 @@ def describe_keypoints(filename, kp):
         depth = depth_img[u, v]
 
         # if depth is, this is a poor keypoint so don't continue and don't append to filtered list
-        if depth < 10:
+        if depth < 18:
             continue 
 
         # Pull depth with opposite indices since we're flipped
@@ -147,7 +149,7 @@ def ORB_detections(folder):
 
     fast = cv2.FastFeatureDetector_create()
     fast.setType(2)
-    # fast.setThreshold(40)
+    # fast.setThreshold(20)
 
     br = cv2.BRISK_create()
 
@@ -183,7 +185,7 @@ def ORB_detections(folder):
         
         good_matches = []
         for m, n in matches:
-            if m.distance < 0.25 * n.distance:
+            if m.distance < 0.45 * n.distance:
                 good_matches.append(m)
 
         img3 = cv2.drawMatches(img1,kp1,img2,kp2,good_matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
@@ -244,4 +246,4 @@ if __name__=="__main__":
     # process_folder('APT_lidar_camera/reflec')
     # AKAZE_detections('APT_lidar_camera/reflec')
     # FAST_detections('APT_lidar_camera/reflec')
-    ORB_detections('2023_10_21_04_10_PM_lidar_camera/reflec')
+    ORB_detections('2023_10_21_04_10_PM_lidar_camera/signal')
