@@ -98,11 +98,13 @@ def world_coordinate(u, v, depth):
             depth*np.cos(psi)]
 
 
-def describe_keypoints(filename, kp):
+def describe_keypoints(filename, kp, annotate=False):
 
     # Grab depth image
     wd = os.getcwd()
     depth_img = cv2.imread(os.path.join(wd,'2023_10_21_04_10_PM_lidar_camera/range',filename), cv2.COLOR_BGR2RGB)
+    depth_img_copy = magnify(depth_img.copy())
+    # print('max depth: ' + str(np.max(depth_img)) + ', min depth: ' + str(np.min(depth_img)))
 
     des = []
     kp_filtered = [] # will store filtered keypoints
@@ -113,24 +115,37 @@ def describe_keypoints(filename, kp):
         u = int(kp[i].pt[0])
         v = int(kp[i].pt[1])
 
-        depth = depth_img[u, v]
+        # print(depth_img.shape)
+        depth = depth_img[u, -v]
+
+        # print('depth(' + str(u) + ', ' + str(v) + ') = ' + str(depth))
 
         # if depth is, this is a poor keypoint so don't continue and don't append to filtered list
-        if depth < 18:
+        if depth < 13:
             continue 
 
         # Pull depth with opposite indices since we're flipped
-        x, y, z = world_coordinate(v, u, depth)
+        x, y, z = world_coordinate(-v, u, depth)
 
-        # print('(' + str(u) + ', ' + str(v) + ') -> (' + 
-        #       str(x) + ', ' + str(y) + ', ' + str(z) + ')')
-
-        # append x, y, z as the description for least norm brute force
-        des.append([x, y, z, u, v])
+        if annotate:
+            cv2.putText(depth_img_copy,
+                        str(depth),
+                        (depth_img_copy.shape[1]-3*v, 3*u),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1,
+                        (255,0,0),
+                        1,
+                        2)
+        
+        des.append([x, y, z])
 
         # append key point to new list
         kp_filtered.append(kp[i])
         
+    if annotate:
+        cv2.imshow('depth', depth_img_copy)
+        cv2.waitKey(0)
+
 
     # return np.uint8(des)
     return [tuple(kp_filtered), np.uint8(np.asarray(des))]
@@ -145,6 +160,7 @@ def ORB_detections(folder):
 
     img1 = np.array([])
     kp1 =0
+    kp1_filtered =0
     des1 = 0
 
     fast = cv2.FastFeatureDetector_create()
@@ -160,7 +176,7 @@ def ORB_detections(folder):
             img1 = cv2.rotate(img1, cv2.ROTATE_90_COUNTERCLOCKWISE)
             kp1 = fast.detect(img1, None)
             # des1 = describe_keypoints(filename, kp1)
-            kp1, des1 = describe_keypoints(filename, kp1)
+            kp1_filtered, des1 = describe_keypoints(filename, kp1, True)
             continue
         
         img2 = cv2.imread(os.path.join(wd,folder,filename), cv2.COLOR_BGR2RGB)
@@ -169,7 +185,7 @@ def ORB_detections(folder):
         kp2 = fast.detect(img2, None)
 
         # des2 = describe_keypoints(filename, kp2)
-        kp2, des2 = describe_keypoints(filename, kp2)
+        kp2_filtered, des2 = describe_keypoints(filename, kp2)
 
 
         # bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
@@ -185,12 +201,12 @@ def ORB_detections(folder):
         
         good_matches = []
         for m, n in matches:
-            if m.distance < 0.45 * n.distance:
+            if m.distance < 0.20 * n.distance:
                 good_matches.append(m)
 
-        img3 = cv2.drawMatches(img1,kp1,img2,kp2,good_matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+        img3 = cv2.drawMatches(img1,kp1_filtered,img2,kp2_filtered,good_matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
 
-        img2_annotated = cv2.drawKeypoints(img2, kp2, None, color=(0,255,0))
+        img2_annotated = cv2.drawKeypoints(img2, kp2_filtered, None, color=(0,255,0))
         img2_annotated = magnify(cv2.rotate(img2_annotated, cv2.ROTATE_90_CLOCKWISE))
         cv2.imshow('detections', img2_annotated)
 
@@ -204,7 +220,7 @@ def ORB_detections(folder):
 
 
         img1 = img2
-        kp1 = kp2
+        kp1_filtered = kp2_filtered
         des1 = des2
 
 
