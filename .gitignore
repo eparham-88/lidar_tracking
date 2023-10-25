@@ -3,3 +3,4 @@ APT_lidar_camera
 GGB_Hallway_lidar_camera
 __pycache__
 .DS_Store
+*.bag

@@ -79,29 +79,13 @@ def FAST_detections(folder):
         img2 = img1
 
 
-# From https://math.libretexts.org/Courses/Monroe_Community_College/MTH_212_Calculus_III/Chapter_11%3A_Vectors_and_the_Geometry_of_Space/11.7%3A_Cylindrical_and_Spherical_Coordinates
+# From https://data.ouster.io/downloads/software-user-manual/firmware-user-manual-v3.0.1.pdf
+# Page 22
 def world_coordinate(u, v, depth):
-    # r = depth
-    # n = None
-    # width = 1024
-    # height = 128
-    # theta_enc = None
-    # theta_azi = None
-    # beam_to_lidar = None
-    
-    # theta_azi = (u - (width/2)) * (180 / (width/2))
-    # theta_alt = (v - (height/2)) * (45 / (height/2))
-    
-    # phi = 2*np.pi*theta_alt/360
-    
-    # x = (r - n)*np.cos(theta_enc + theta_azi)*np.cos(phi) + (beam_to_lidar[0,3])*np.cos(theta_enc)
-    # y = (r - n)*np.sin(theta_enc + theta_azi)*np.cos(phi) + (beam_to_lidar[0,3])*np.sin(theta_enc)
-    # z = (r - n)*np.sin(phi) + (beam_to_lidar[2,3])
-    
     h_res = 1024
-    v_res = 16
+    v_res = 128
     h_range = 2*np.pi
-    v_range = np.pi / 4
+    v_range = np.pi / 2
 
     theta = (1.5*h_range) - (u / h_res)*h_range
     psi   = ((np.pi - v_range)/2) + (v / v_res)*v_range
@@ -112,11 +96,15 @@ def world_coordinate(u, v, depth):
             depth*np.cos(psi)]
 
 
-def describe_keypoints(filename, kp, my_lidar):
+
+def describe_keypoints(filename, kp, my_lidar, annotate=False):
 
     # Grab depth image
     wd = os.getcwd()
     depth_img = cv2.imread(os.path.join(wd,'2023_10_21_04_10_PM_lidar_camera/range',filename), cv2.COLOR_BGR2RGB)
+    
+    depth_img_copy = magnify(depth_img.copy())
+    # print('max depth: ' + str(np.max(depth_img)) + ', min depth: ' + str(np.min(depth_img)))
 
     des = []
     kp_filtered = [] # will store filtered keypoints
@@ -130,33 +118,47 @@ def describe_keypoints(filename, kp, my_lidar):
         u = int(kp[i].pt[0])
         v = int(kp[i].pt[1])
 
-        depth = depth_img[u, v]
+        # print(depth_img.shape)
+        depth = depth_img[u, -v]
+
+        # print('depth(' + str(u) + ', ' + str(v) + ') = ' + str(depth))
 
         # if depth is, this is a poor keypoint so don't continue and don't append to filtered list
-        if depth < 10:
+        if depth < 13:
             continue 
 
         # Pull depth with opposite indices since we're flipped
-        # x, y, z = world_coordinate(v, u, depth)
+
+        # x, y, z = world_coordinate(-v, u, depth)
         x, y, z = my_lidar.getXYZCoords(v, u, depth)
 
-        # print('(' + str(u) + ', ' + str(v) + ') -> (' + 
-        #       str(x) + ', ' + str(y) + ', ' + str(z) + ')')
-
-        # append x, y, z as the description for least norm brute force
-        des.append([x, y, z, u, v])
+        if annotate:
+            cv2.putText(depth_img_copy,
+                        str(depth),
+                        (depth_img_copy.shape[1]-3*v, 3*u),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1,
+                        (255,0,0),
+                        1,
+                        2)
+        
+        des.append([x, y, z])
+        
         x_coords.append(x)
         y_coords.append(y)
         z_coords.append(z)
-        
+
         # append key point to new list
         kp_filtered.append(kp[i])
         
+    if annotate:
+        cv2.imshow('depth', depth_img_copy)
+        cv2.waitKey(0)
+
     fig = plt.figure()
     ax = plt.axes(projection='3d')
     ax.scatter3D(x_coords, y_coords, z_coords)
     plt.show()
-
 
     # return np.uint8(des)
     return [tuple(kp_filtered), np.uint8(np.asarray(des))]
@@ -171,11 +173,12 @@ def ORB_detections(folder, my_lidar):
 
     img1 = np.array([])
     kp1 =0
+    kp1_filtered =0
     des1 = 0
 
     fast = cv2.FastFeatureDetector_create()
     fast.setType(2)
-    # fast.setThreshold(40)
+    # fast.setThreshold(20)
 
     br = cv2.BRISK_create()
 
@@ -188,7 +191,9 @@ def ORB_detections(folder, my_lidar):
             img1 = cv2.rotate(img1, cv2.ROTATE_90_COUNTERCLOCKWISE)
             kp1 = fast.detect(img1, None)
             # des1 = describe_keypoints(filename, kp1)
-            kp1, des1 = describe_keypoints(filename, kp1, my_lidar)
+
+            kp1_filtered, des1 = describe_keypoints(filename, kp1, my_lidar, True)
+            
             continue
         
         img2 = cv2.imread(os.path.join(wd,folder,filename), cv2.COLOR_BGR2RGB)
@@ -198,7 +203,8 @@ def ORB_detections(folder, my_lidar):
         kp2 = fast.detect(img2, None)
 
         # des2 = describe_keypoints(filename, kp2)
-        kp2, des2 = describe_keypoints(filename, kp2, my_lidar)
+
+        kp2_filtered, des2 = describe_keypoints(filename, kp2, my_lidar)
 
 
         # bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
@@ -215,23 +221,24 @@ def ORB_detections(folder, my_lidar):
         
         good_matches = []
         for m, n in matches:
-            if m.distance < .45 * n.distance:
+            if m.distance < 0.20 * n.distance:
                 good_matches.append(m)
 
-        img3 = cv2.drawMatches(img1,kp1,img2,kp2,good_matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+        img3 = cv2.drawMatches(img1,kp1_filtered,img2,kp2_filtered,good_matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
 
-        img2_annotated = cv2.drawKeypoints(img2, kp2, None, color=(0,255,0))
+        img2_annotated = cv2.drawKeypoints(img2, kp2_filtered, None, color=(0,255,0))
         img2_annotated = magnify(cv2.rotate(img2_annotated, cv2.ROTATE_90_CLOCKWISE))
         cv2.imshow('detections', img2_annotated)
 
-        scaled = magnify(cv2.rotate(img3, cv2.ROTATE_90_CLOCKWISE))
+        # scaled = magnify(cv2.rotate(img3, cv2.ROTATE_90_CLOCKWISE))
+        scaled = cv2.rotate(img3, cv2.ROTATE_90_CLOCKWISE)
         cv2.imshow('img', scaled)
 
 
         cv2.waitKey(0)
 
         img1 = img2
-        kp1 = kp2
+        kp1_filtered = kp2_filtered
         des1 = des2
 
 
