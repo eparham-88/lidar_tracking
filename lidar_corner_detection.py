@@ -243,40 +243,131 @@ def ORB_detections(folder, my_lidar):
 
 
 
+def maskImageByDepth(img, depth, threshold):
+    depth_blurred = cv2.GaussianBlur(depth, (15,15), 0)
+    depth_mask = depth_blurred < threshold
 
-def AKAZE_detections(folder):
+
+    img_masked = img.copy()
+    img_masked[depth_mask] = 255
+    
+    # cv2.imshow('image masked', img_masked)
+    # cv2.waitKey(0)
+
+    return img_masked
+
+
+def filter_keypoints(kp, des, depth_img, display=True):
+
+    kp_f = []
+    des_f = []
+
+    cv2.imshow('depth', cv2.rotate(depth_img, cv2.ROTATE_90_CLOCKWISE))
+
+    # find laplacian to depth_img:
+    laplacian = cv2.Laplacian(depth_img,cv2.CV_64F)
+    laplacian[depth_img<5] = 255
+    laplacian = cv2.GaussianBlur(laplacian, (9,9), 0)
+    mask = (laplacian>1.0)
+    mask[-260:,60:] = True # temp fix
+
+    if display:
+        img = np.zeros_like(laplacian)
+        img[mask] = 255
+
+        cv2.imshow('laplacian', cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE))
+        # cv2.waitKey(0)
+
+    for i in range(len(kp)):
+
+        # pull u, v value from kp descriptor
+        u = int(kp[i].pt[0])
+        v = int(kp[i].pt[1])
+
+        if mask[v,u] == True:
+            continue
+        else:
+            kp_f.append(kp[i])
+            des_f.append(des[i])
+
+
+    print(str(len(kp)) + ' -> ' + str(len(kp_f)))
+    return [tuple(kp_f), np.uint8(np.asarray(des_f))]
+
+
+
+
+def BRISK_detections(folder):
     
     wd = os.getcwd()
 
     lst = os.listdir(folder)
     lst.sort()
 
-    img2 = np.array([])
+    img1 = np.array([])
+    kp1_filtered =0
+    des1_filtered = 0
+
+    br = cv2.BRISK_create(thresh=15, octaves=3, patternScale=1.0)
 
     for filename in lst:
 
-        if img2.size == 0:
-            img2 = cv2.imread(os.path.join(wd,folder,filename), cv2.COLOR_BGR2RGB)
+        if img1.size == 0:
+            img1 = cv2.imread(os.path.join(wd,folder,filename), cv2.COLOR_BGR2RGB)
+            img1 = blur(img1)
+            # img1 = maskImageByDepth(img1, cv2.imread(os.path.join(wd,'2023_10_21_04_10_PM_lidar_camera/range',filename), cv2.COLOR_BGR2RGB), 5)
+            img1 = cv2.rotate(img1, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            kp1, des1 = br.detectAndCompute(img1, None)
+            kp1_filtered, des1_filtered = filter_keypoints(kp1, des1, cv2.rotate(cv2.imread(os.path.join(wd,'2023_10_21_04_10_PM_lidar_camera/range',filename), cv2.COLOR_BGR2RGB), cv2.ROTATE_90_COUNTERCLOCKWISE))
+            
             continue
         
-        img1 = cv2.imread(os.path.join(wd,folder,filename), cv2.COLOR_BGR2RGB)
-
-        kp1, desc1 = get_AKAZE(img1)
-        kp2, desc2 = get_AKAZE(img2)
-        matches = find_matches(desc1,desc2,0.7)
-        XY = get_match_points(kp1,kp2,matches)
+        img2 = cv2.imread(os.path.join(wd,folder,filename), cv2.COLOR_BGR2RGB)
+        img2 = blur(img2)
+        # img2 = maskImageByDepth(img2, cv2.imread(os.path.join(wd,'2023_10_21_04_10_PM_lidar_camera/range',filename), cv2.COLOR_BGR2RGB), 5)
+        img2 = cv2.rotate(img2, cv2.ROTATE_90_COUNTERCLOCKWISE)
         
-        img2 = img1
+        kp2, des2 = br.detectAndCompute(img2, None)
+        kp2_filterd, des2_filtered = filter_keypoints(kp2, des2, cv2.rotate(cv2.imread(os.path.join(wd,'2023_10_21_04_10_PM_lidar_camera/range',filename), cv2.COLOR_BGR2RGB), cv2.ROTATE_90_COUNTERCLOCKWISE))
+
+        index_params = dict(algorithm=6,
+                            table_number=6,
+                            key_size=12,
+                            multi_probe_level=2)
+        
+        search_params = {}
+        flann = cv2.FlannBasedMatcher(index_params, search_params)
+        matches = flann.knnMatch(des1_filtered, des2_filtered, k=2)
+        
+        good_matches = []
+        for match in matches:
+            if len(match) == 2:
+                m, n = match
+                if m.distance < 0.55 * n.distance:
+                    good_matches.append(m)
+
+        img3 = cv2.drawMatches(img1,kp1_filtered,img2,kp2_filterd,good_matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+
+        img2_annotated = cv2.drawKeypoints(img2, kp2, None, color=(0,255,0))
+        img2_annotated = magnify(cv2.rotate(img2_annotated, cv2.ROTATE_90_CLOCKWISE))
+        cv2.imshow('detections', img2_annotated)
+
+        # scaled = magnify(cv2.rotate(img3, cv2.ROTATE_90_CLOCKWISE))
+        scaled = cv2.rotate(img3, cv2.ROTATE_90_CLOCKWISE)
+        cv2.imshow('img', scaled)
+
+
+        cv2.waitKey(0)
+
+        img1 = img2
+        kp1_filtered = kp2_filterd
+        des1_filtered = des2_filtered
+
 
 
 
 if __name__=="__main__":
 
-    # process_folder(sys.argv[1])
-    # process_folder('APT_lidar_camera/signal')
-    # process_folder('APT_lidar_camera/reflec')
-    # AKAZE_detections('APT_lidar_camera/reflec')
-    # FAST_detections('APT_lidar_camera/reflec')
-    # ORB_detections('GGB_Hallway_lidar_camera/reflec')
-    my_lidar = Lidar()
+    # my_lidar = Lidar()
     ORB_detections('2023_10_21_04_10_PM_lidar_camera/signal', my_lidar)
+    # BRISK_detections('2023_10_21_04_10_PM_lidar_camera/signal')
