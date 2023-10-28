@@ -132,15 +132,15 @@ def describe_keypoints(filename, kp, my_lidar, annotate=False):
         # x, y, z = world_coordinate(-v, u, depth)
         x, y, z = my_lidar.getXYZCoords(v, u, depth)
 
-        if annotate:
-            cv2.putText(depth_img_copy,
-                        str(depth),
-                        (depth_img_copy.shape[1]-3*v, 3*u),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        1,
-                        (255,0,0),
-                        1,
-                        2)
+        # if annotate:
+            # cv2.putText(depth_img_copy,
+            #             str(depth),
+            #             (depth_img_copy.shape[1]-3*v, 3*u),
+            #             cv2.FONT_HERSHEY_SIMPLEX,
+            #             1,
+            #             (255,0,0),
+            #             1,
+            #             2)
         
         des.append([x, y, z])
         
@@ -151,9 +151,9 @@ def describe_keypoints(filename, kp, my_lidar, annotate=False):
         # append key point to new list
         kp_filtered.append(kp[i])
         
-    if annotate:
-        cv2.imshow('depth', depth_img_copy)
-        cv2.waitKey(0)
+    # if annotate:
+        # cv2.imshow('depth', depth_img_copy)
+        # cv2.waitKey(0)
 
     fig = plt.figure()
     ax = plt.axes(projection='3d')
@@ -262,7 +262,7 @@ def filter_keypoints(kp, des, depth_img, display=True):
     kp_f = []
     des_f = []
 
-    cv2.imshow('depth', cv2.rotate(depth_img, cv2.ROTATE_90_CLOCKWISE))
+    # cv2.imshow('depth', cv2.rotate(depth_img, cv2.ROTATE_90_CLOCKWISE))
 
     # find laplacian to depth_img:
     laplacian = cv2.Laplacian(depth_img,cv2.CV_64F)
@@ -275,7 +275,7 @@ def filter_keypoints(kp, des, depth_img, display=True):
         img = np.zeros_like(laplacian)
         img[mask] = 255
 
-        cv2.imshow('laplacian', cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE))
+        # cv2.imshow('laplacian', cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE))
         # cv2.waitKey(0)
 
     for i in range(len(kp)):
@@ -368,6 +368,6 @@ def BRISK_detections(folder):
 
 if __name__=="__main__":
 
-    # my_lidar = Lidar()
+    my_lidar = Lidar()
     ORB_detections('2023_10_21_04_10_PM_lidar_camera/signal', my_lidar)
     # BRISK_detections('2023_10_21_04_10_PM_lidar_camera/signal')

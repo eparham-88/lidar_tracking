@@ -5,13 +5,18 @@ from lidar_corner_detection import world_coordinate
 from noise_removal import blur
 from lidar_intrinsics import Lidar
 import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 from mpl_toolkits import mplot3d
 
 
 class Frame:
     def __init__(self, img_path, depth_path, br):
-        img = cv2.imread(img_path, cv2.COLOR_BGR2RGB)
-        self.depth_img = cv2.imread(depth_path, cv2.COLOR_BGR2RGB)
+        img = cv2.imread(img_path, cv2.COLOR_RGB2BGR)
+        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        # print(np.max(img))
+        self.depth_img = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
+        self.depth_img = cv2.cvtColor(self.depth_img, cv2.COLOR_RGB2BGR)
+        self.depth_img = self.depth_img[:,:,0]
         self.img = blur(img)
         self.kp, self.des = br.detectAndCompute(self.img, None)
         self.filter_keypoints()
@@ -54,10 +59,12 @@ class Frame:
 
         return
     
-    def find_world_coordinates(self, matches, query):
+    def find_world_coordinates(self, matches, query, my_lidar):
 
         # clear xyz from previous
-        self.xyz = np.zeros((len(matches), 3))
+        self.xyz = np.zeros((len(matches), 4))
+        
+        kps_filtered = []
 
         for i, match in enumerate(matches):
             if query:
@@ -68,11 +75,53 @@ class Frame:
             v = int(self.kp[i_m].pt[0])
             u = int(self.kp[i_m].pt[1])
 
+            point = my_lidar.getXYZCoords(u, v, self.depth_img[u,v])
+            
+            # print("u, v: {}, {}".format(u, v))
+            # print("X, Y, Z: {}, {}, {}".format(point[0], point[1], point[2]))
+            # point = world_coordinate(u, v, self.depth_img[u,v])
 
-            point = world_coordinate(u, v, self.depth_img[u,v])
-
-            self.xyz[i] = point
-
+            self.xyz[i, :] = point
+            
+            kps_filtered.append(self.kp[i_m])
+        
+        self.xyz = self.xyz @ my_lidar.lidar_to_sensor_transform * 0.001
+        
+        plt.figure("points")
+        ax = plt.axes(projection='3d')
+        ax.scatter3D(self.xyz[:,0], self.xyz[:,1], self.xyz[:,2])
+        ax.set_xlabel("x")
+        ax.set_ylabel('y')
+        
+        img2_annotated = cv2.drawKeypoints(self.img, tuple(kps_filtered), None, color=(0,255,0))
+        # cv2.imshow('detections', img2_annotated)
+        
+        plt.figure("img")
+        imgplot = plt.imshow(img2_annotated)
+        
+        plt.show()
+        plt.pause(0.1)
+        
+        cv2.waitKey(0)
+        
+        
+    def find_world_coordinates_whole_img(self, my_lidar):
+        self.xyz = np.zeros((self.depth_img.shape[0] * self.depth_img.shape[1], 4))
+        i = 0
+        for u in range(self.depth_img.shape[0]):
+            for v in range(self.depth_img.shape[1]):
+                point = my_lidar.getXYZCoords(u, v, self.depth_img[u,v])
+                self.xyz[i, :] = point
+                i+= 1
+        
+        self.xyz = self.xyz @ my_lidar.lidar_to_sensor_transform * 0.001
+        
+        plt.figure("points")
+        ax = plt.axes(projection='3d')
+        ax.scatter3D(self.xyz[:,0], self.xyz[:,1], self.xyz[:,2])
+        ax.set_xlabel("x")
+        ax.set_ylabel('y')
+        plt.show()
 
 
 
@@ -107,6 +156,7 @@ if __name__=="__main__":
 
     folder = '2023_10_21_04_10_PM_lidar_camera'
     image_type = 'signal'
+    my_lidar = Lidar()
 
     # grab folder
     wd = os.getcwd()
@@ -145,14 +195,14 @@ if __name__=="__main__":
                 m, n = match
                 if m.distance < 0.55 * n.distance:
                     matches.add(m)
+                    
+        prev_frame.find_world_coordinates_whole_img(my_lidar)
 
+        prev_frame.find_world_coordinates(matches, True, my_lidar)
 
-        prev_frame.find_world_coordinates(matches, True)
-
-        this_frame.find_world_coordinates(matches, False)
+        this_frame.find_world_coordinates(matches, False, my_lidar)
 
         fit_transformation(this_frame.xyz, prev_frame.xyz)
-
 
         prev_frame = this_frame
 
