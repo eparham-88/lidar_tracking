@@ -368,6 +368,6 @@ def BRISK_detections(folder):
 
 if __name__=="__main__":
 
-    my_lidar = Lidar()
-    ORB_detections('2023_10_21_04_10_PM_lidar_camera/signal', my_lidar)
-    # BRISK_detections('2023_10_21_04_10_PM_lidar_camera/signal')
+    # my_lidar = Lidar()
+    # ORB_detections('2023_10_21_04_10_PM_lidar_camera/signal', my_lidar)
+    BRISK_detections('2023_10_21_04_10_PM_lidar_camera/signal')

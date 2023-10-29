@@ -59,7 +59,7 @@ class Frame:
 
         return
     
-    def find_world_coordinates(self, matches, query, my_lidar):
+    def find_world_coordinates(self, matches, query, my_lidar, display=False):
 
         # clear xyz from previous
         self.xyz = np.zeros((len(matches), 4))
@@ -85,24 +85,25 @@ class Frame:
             
             kps_filtered.append(self.kp[i_m])
         
-        self.xyz = self.xyz @ my_lidar.lidar_to_sensor_transform * 0.001
+        self.xyz *= 0.001
+
+        if display:
         
-        plt.figure("points")
-        ax = plt.axes(projection='3d')
-        ax.scatter3D(self.xyz[:,0], self.xyz[:,1], self.xyz[:,2])
-        ax.set_xlabel("x")
-        ax.set_ylabel('y')
+            plt.figure("points")
+            ax = plt.axes(projection='3d')
+            ax.scatter3D(self.xyz[:,0], self.xyz[:,1], self.xyz[:,2])
+            ax.set_xlabel("x")
+            ax.set_ylabel('y')
+            ax.axis('scaled')
+            
+            img2_annotated = cv2.drawKeypoints(self.img, tuple(kps_filtered), None, color=(0,255,0))
+            plt.figure("img")
+            imgplot = plt.imshow(img2_annotated)
+
+            plt.show()
+
+        return
         
-        img2_annotated = cv2.drawKeypoints(self.img, tuple(kps_filtered), None, color=(0,255,0))
-        # cv2.imshow('detections', img2_annotated)
-        
-        plt.figure("img")
-        imgplot = plt.imshow(img2_annotated)
-        
-        plt.show()
-        plt.pause(0.1)
-        
-        cv2.waitKey(0)
         
         
     def find_world_coordinates_whole_img(self, my_lidar):
@@ -121,6 +122,7 @@ class Frame:
         ax.scatter3D(self.xyz[:,0], self.xyz[:,1], self.xyz[:,2])
         ax.set_xlabel("x")
         ax.set_ylabel('y')
+        ax.axis('scaled')
         plt.show()
 
 
@@ -141,8 +143,6 @@ def fit_transformation(XYZp, XYZ):
     M, _, _, _ = np.linalg.lstsq(A,b)
 
     M = np.vstack((M.reshape(3,4), np.array([0,0,0,1])))
-
-    print(M)
 
     return M
 
@@ -173,6 +173,8 @@ if __name__=="__main__":
     flann = cv2.FlannBasedMatcher(index_params, search_params)
     prev_frame = None
 
+
+
     for filename in lst:
 
         if prev_frame == None:
@@ -196,13 +198,29 @@ if __name__=="__main__":
                 if m.distance < 0.55 * n.distance:
                     matches.add(m)
                     
-        prev_frame.find_world_coordinates_whole_img(my_lidar)
+        # prev_frame.find_world_coordinates_whole_img(my_lidar)
 
         prev_frame.find_world_coordinates(matches, True, my_lidar)
 
         this_frame.find_world_coordinates(matches, False, my_lidar)
 
-        fit_transformation(this_frame.xyz, prev_frame.xyz)
+        M = fit_transformation(prev_frame.xyz, this_frame.xyz)
+
+        print(M @ np.array([[0], [0], [0], [1]]))
+        
+        # transform first previous frame
+        prev_xyz_transformed = M @ prev_frame.xyz.T
+        prev_xyz_transformed = prev_xyz_transformed.T
+
+        plt.figure("points")
+        ax = plt.axes(projection='3d')
+        ax.scatter3D(this_frame.xyz[:,0], this_frame.xyz[:,1], this_frame.xyz[:,2], color="b")
+        ax.scatter3D(prev_xyz_transformed[:,0], prev_xyz_transformed[:,1], prev_xyz_transformed[:,2], color="r")
+        ax.set_xlabel("x")
+        ax.set_ylabel('y')
+        ax.axis('scaled')
+        plt.show()
+
 
         prev_frame = this_frame
 

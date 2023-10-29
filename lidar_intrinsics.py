@@ -77,7 +77,7 @@ class Lidar(object):
         # print(r)
         
         theta_encoder = 2.0 * np.pi * (1.0 - v / self.scan_width)
-        theta_azimuth = -2.0 * np.pi * (self.beam_azimuth_angles[u] / 360.0)
+        theta_azimuth = 0.0 * (-2.0 * np.pi * (self.beam_azimuth_angles[u] / 360.0))
         phi = 2.0 * np.pi * (self.beam_altitude_angles[u] / 360.0)
         
         x = (r - self.n) * np.cos(theta_encoder + theta_azimuth) * np.cos(phi) + self.beam_to_lidar_transform[0,3] * np.cos(theta_encoder)
@@ -87,8 +87,13 @@ class Lidar(object):
         # x = (r - self.n)*np.cos(self.theta_encoder[measurement_id] + self.theta_azimuth[i])*np.cos(self.phi[i]) + (self.beam_to_lidar_transform[0][3])*np.cos(self.theta_encoder[measurement_id])
         # y = (r - self.n)*np.sin(self.theta_encoder[measurement_id] + self.theta_azimuth[i])*np.cos(self.phi[i]) + (self.beam_to_lidar_transform[0][3])*np.sin(self.theta_encoder[measurement_id])
         # z = (r - self.n)*np.sin(self.phi[i]) + (self.beam_to_lidar_transform[2,3])
+
+
+        # Correct for lidar to sensor
+        homogeneous = self.lidar_to_sensor_transform @ np.array([[x], [y], [z], [1]])
+        homogeneous /= homogeneous[3,0]
         
-        return [x,y,z,1] #homogenize?
+        return homogeneous.T
     
     def setScanWidth(self, width):
         """ 
