@@ -222,6 +222,8 @@ if __name__=="__main__":
         plt.show()
 
 
+        # TODO: Look into optical flow openCV algorithms
+
         prev_frame = this_frame
 
 
