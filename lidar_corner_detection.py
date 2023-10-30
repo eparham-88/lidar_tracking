@@ -266,16 +266,18 @@ def filter_keypoints(kp, des, depth_img, display=True):
 
     # find laplacian to depth_img:
     laplacian = cv2.Laplacian(depth_img,cv2.CV_64F)
-    laplacian[depth_img<5] = 255
+    laplacian[depth_img<300] = 65536
     laplacian = cv2.GaussianBlur(laplacian, (9,9), 0)
-    mask = (laplacian>1.0)
+    mask = (laplacian>0.8)
     mask[-260:,60:] = True # temp fix
+    mask[-130:,:] = True # temp fix
+    mask[:130,:] = True # temp fix
 
     if display:
         img = np.zeros_like(laplacian)
         img[mask] = 255
-
-        # cv2.imshow('laplacian', cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE))
+        
+        cv2.imshow('laplacian', cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE))
         # cv2.waitKey(0)
 
     for i in range(len(kp)):
@@ -308,7 +310,7 @@ def BRISK_detections(folder):
     kp1_filtered =0
     des1_filtered = 0
 
-    br = cv2.BRISK_create(thresh=15, octaves=3, patternScale=1.0)
+    br = cv2.BRISK_create(thresh=20, octaves=3, patternScale=1.0)
 
     for filename in lst:
 
@@ -318,7 +320,7 @@ def BRISK_detections(folder):
             # img1 = maskImageByDepth(img1, cv2.imread(os.path.join(wd,'2023_10_21_04_10_PM_lidar_camera/range',filename), cv2.COLOR_BGR2RGB), 5)
             img1 = cv2.rotate(img1, cv2.ROTATE_90_COUNTERCLOCKWISE)
             kp1, des1 = br.detectAndCompute(img1, None)
-            kp1_filtered, des1_filtered = filter_keypoints(kp1, des1, cv2.rotate(cv2.imread(os.path.join(wd,'2023_10_21_04_10_PM_lidar_camera/range',filename), cv2.COLOR_BGR2RGB), cv2.ROTATE_90_COUNTERCLOCKWISE))
+            kp1_filtered, des1_filtered = filter_keypoints(kp1, des1, cv2.rotate(cv2.imread(os.path.join(wd,'2023_10_21_04_10_PM_lidar_camera/range',filename), cv2.IMREAD_UNCHANGED), cv2.ROTATE_90_COUNTERCLOCKWISE))
             
             continue
         
@@ -328,7 +330,7 @@ def BRISK_detections(folder):
         img2 = cv2.rotate(img2, cv2.ROTATE_90_COUNTERCLOCKWISE)
         
         kp2, des2 = br.detectAndCompute(img2, None)
-        kp2_filterd, des2_filtered = filter_keypoints(kp2, des2, cv2.rotate(cv2.imread(os.path.join(wd,'2023_10_21_04_10_PM_lidar_camera/range',filename), cv2.COLOR_BGR2RGB), cv2.ROTATE_90_COUNTERCLOCKWISE))
+        kp2_filterd, des2_filtered = filter_keypoints(kp2, des2, cv2.rotate(cv2.imread(os.path.join(wd,'2023_10_21_04_10_PM_lidar_camera/range',filename), cv2.IMREAD_UNCHANGED), cv2.ROTATE_90_COUNTERCLOCKWISE))
 
         index_params = dict(algorithm=6,
                             table_number=6,
@@ -343,7 +345,7 @@ def BRISK_detections(folder):
         for match in matches:
             if len(match) == 2:
                 m, n = match
-                if m.distance < 0.55 * n.distance:
+                if m.distance < 0.5 * n.distance:
                     good_matches.append(m)
 
         img3 = cv2.drawMatches(img1,kp1_filtered,img2,kp2_filterd,good_matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)

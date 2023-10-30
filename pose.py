@@ -12,11 +12,7 @@ from mpl_toolkits import mplot3d
 class Frame:
     def __init__(self, img_path, depth_path, br):
         img = cv2.imread(img_path, cv2.COLOR_RGB2BGR)
-        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        # print(np.max(img))
         self.depth_img = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
-        self.depth_img = cv2.cvtColor(self.depth_img, cv2.COLOR_RGB2BGR)
-        self.depth_img = self.depth_img[:,:,0]
         self.img = blur(img)
         self.kp, self.des = br.detectAndCompute(self.img, None)
         self.filter_keypoints()
@@ -27,10 +23,12 @@ class Frame:
 
         # find laplacian to depth_img:
         laplacian = cv2.Laplacian(self.depth_img,cv2.CV_64F)
-        laplacian[self.depth_img<5] = 255
+        laplacian[self.depth_img<300] = 65536
         laplacian = cv2.GaussianBlur(laplacian, (9,9), 0)
-        mask = (laplacian>1.0)
+        mask = (laplacian>0.8)
         mask[60:,:260] = True # temp fix
+        mask[:,:130] = True # temp fix
+        mask[:,-130:] = True # temp fix
 
         if display:
             img = np.zeros_like(laplacian)
@@ -164,7 +162,7 @@ if __name__=="__main__":
     lst.sort()
 
     # create items used throughout
-    br = cv2.BRISK_create(thresh=15, octaves=3, patternScale=1.0)
+    br = cv2.BRISK_create(thresh=20, octaves=3, patternScale=1.0)
     index_params = dict(algorithm=6,
                         table_number=6,
                         key_size=12,
@@ -195,7 +193,7 @@ if __name__=="__main__":
         for match in preliminary_matches:
             if len(match) == 2:
                 m, n = match
-                if m.distance < 0.55 * n.distance:
+                if m.distance < 0.5 * n.distance:
                     matches.add(m)
                     
         # prev_frame.find_world_coordinates_whole_img(my_lidar)
