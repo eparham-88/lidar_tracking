@@ -223,7 +223,7 @@ if __name__=="__main__":
     lst.sort()
 
     # create items used throughout
-    br = cv2.BRISK_create(thresh=10, octaves=3, patternScale=1.0)
+    br = cv2.BRISK_create(thresh=5, octaves=3, patternScale=1.0)
     index_params = dict(algorithm=6,
                         table_number=6,
                         key_size=12,
@@ -232,9 +232,9 @@ if __name__=="__main__":
     flann = cv2.FlannBasedMatcher(index_params, search_params)
     prev_frame = None
 
+    poses = np.zeros((len(lst), 12))
 
-
-    for filename in lst:
+    for i, filename in enumerate(lst):
 
         if prev_frame == None:
             prev_frame = Frame(os.path.join(wd,folder,image_type,filename),
@@ -254,7 +254,7 @@ if __name__=="__main__":
         for match in preliminary_matches:
             if len(match) == 2:
                 m, n = match
-                if m.distance < 0.7 * n.distance:
+                if m.distance < 0.9 * n.distance:
                     matches.append(m)
                     
         # prev_frame.find_world_coordinates_whole_img(my_lidar)
@@ -263,32 +263,44 @@ if __name__=="__main__":
 
         this_frame.find_world_coordinates(matches, False, my_lidar)
 
-        M, outliers_mask = fit_transformation(this_frame.xyz, prev_frame.xyz)
+        M, outliers_mask = fit_transformation(prev_frame.xyz, this_frame.xyz)
 
         this_frame.xyz = this_frame.xyz[:, outliers_mask]
         prev_frame.xyz = prev_frame.xyz[:, outliers_mask]
 
-        print(M @ np.array([[0], [0], [0], [1]]))
+        poses[i, :] = M[:3,:].reshape(-1)
+        if i > 0:
+            poses[i, 3::4] += poses[i-1, 3::4]
+        # print(M @ np.array([[0], [0], [0], [1]]))
         
         # transform first previous frame
-        prev_xyz_transformed = M @ prev_frame.xyz
+        this_xyz_transformed = M @ this_frame.xyz
 
-        if True:
+        if False:
             plt.figure("points")
             ax = plt.axes(projection='3d')
-            ax.scatter3D(this_frame.xyz[0,:], this_frame.xyz[1,:], this_frame.xyz[2,:], color="b")
-            ax.scatter3D(prev_xyz_transformed[0,:], prev_xyz_transformed[1,:], prev_xyz_transformed[2,:], color="r")
+            ax.scatter3D(this_xyz_transformed[0,:], this_xyz_transformed[1,:], this_xyz_transformed[2,:], color="b")
+            ax.scatter3D(prev_frame.xyz[0,:], prev_frame.xyz[1,:], prev_frame.xyz[2,:], color="r")
             ax.set_xlabel("x")
             ax.set_ylabel('y')
             ax.axis('scaled')
             plt.show()
-        else:
+        elif False:
             drawMatches(this_frame, prev_frame, matches)
 
-
+        print(str(i) + " of " + str(len(lst)))
         prev_frame = this_frame
 
+    
+    plt.figure("poses")
+    ax = plt.axes(projection='3d')
+    ax.scatter3D(poses[:,3], poses[:,7], poses[:,11], color="b")
+    ax.set_xlabel("x")
+    ax.set_ylabel('y')
+    ax.axis('scaled')
+    plt.show()
 
+    print()
 
 
 
