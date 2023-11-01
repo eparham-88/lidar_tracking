@@ -60,7 +60,7 @@ class Frame:
     def find_world_coordinates(self, matches, query, my_lidar, display=False):
 
         # clear xyz from previous
-        self.xyz = np.zeros((len(matches), 4))
+        self.xyz = np.zeros((4, len(matches)))
         
         kps_filtered = []
 
@@ -75,17 +75,17 @@ class Frame:
 
             point = my_lidar.getXYZCoords(u, v, self.depth_img[u,v])
 
-            self.xyz[i, :] = point
+            self.xyz[:, i] = point
             
             kps_filtered.append(self.kp[i_m])
         
-        self.xyz *= 0.001
+        self.xyz[:3, :] *= 0.001
 
         if display:
         
             plt.figure("points")
             ax = plt.axes(projection='3d')
-            ax.scatter3D(self.xyz[:,0], self.xyz[:,1], self.xyz[:,2])
+            ax.scatter3D(self.xyz[0,:], self.xyz[1,:], self.xyz[2,:])
             ax.set_xlabel("x")
             ax.set_ylabel('y')
             ax.axis('scaled')
@@ -106,24 +106,68 @@ class Frame:
         for u in range(self.depth_img.shape[0]):
             for v in range(self.depth_img.shape[1]):
                 point = my_lidar.getXYZCoords(u, v, self.depth_img[u,v])
-                self.xyz[i, :] = point
+                self.xyz[:, i] = point
                 i+= 1
         
-        self.xyz = self.xyz @ my_lidar.lidar_to_sensor_transform * 0.001
+        self.xyz =  my_lidar.lidar_to_sensor_transform @ self.xyz
+        self.xyz[:3, :] *= 0.001
         
         plt.figure("points")
         ax = plt.axes(projection='3d')
-        ax.scatter3D(self.xyz[:,0], self.xyz[:,1], self.xyz[:,2])
+        ax.scatter3D(self.xyz[0,:], self.xyz[1,:], self.xyz[2,:])
         ax.set_xlabel("x")
         ax.set_ylabel('y')
         ax.axis('scaled')
         plt.show()
+    
+
+
+
+
+
 
 
 
 def fit_transformation(XYZp, XYZ):
-    xs = XYZ[:,0]; ys = XYZ[:,1]; zs = XYZ[:,2]
-    xps = XYZp[:,0]; yps = XYZp[:,1]; zps = XYZp[:,2]
+
+    XYZp_ = np.copy(XYZp)
+    XYZ_ = np.copy(XYZ)
+
+    M = None
+
+    outlier_final_mask = XYZp_[3, :] > 0
+
+    for _ in range(20):
+
+        # Find the transformation
+        M = least_squares_transformation(XYZp_, XYZ_)
+
+        # Find norm differences between points
+        diff = np.linalg.norm(XYZp - M @ XYZ, axis=0)
+        std = np.std(diff)
+        outlier_mask = diff < 0.8*std+np.average(diff)
+
+        # plt.figure("differences")
+        # plt.plot(diff)
+        # plt.show()
+
+        if np.sum(outlier_mask) == outlier_mask.shape[0] or np.sum(outlier_mask) < 10:
+            # no outliers or too few remaining points for another round -> exit
+            break
+
+        # update outliers mask with new bad values
+        outlier_final_mask = (outlier_final_mask) & (outlier_mask)
+
+        XYZp_ = XYZp[:, outlier_final_mask]
+        XYZ_ = XYZ[:, outlier_final_mask]
+
+    return M, outlier_final_mask
+
+
+
+def least_squares_transformation(XYZp, XYZ):
+    xs = XYZ[0,:]; ys = XYZ[1,:]; zs = XYZ[2,:]
+    xps = XYZp[0,:]; yps = XYZp[1,:]; zps = XYZp[2,:]
 
     A = np.zeros((3*xs.shape[0], 12))
     b = np.zeros((3*xs.shape[0], 1))
@@ -179,7 +223,7 @@ if __name__=="__main__":
     lst.sort()
 
     # create items used throughout
-    br = cv2.BRISK_create(thresh=20, octaves=3, patternScale=1.0)
+    br = cv2.BRISK_create(thresh=10, octaves=3, patternScale=1.0)
     index_params = dict(algorithm=6,
                         table_number=6,
                         key_size=12,
@@ -210,7 +254,7 @@ if __name__=="__main__":
         for match in preliminary_matches:
             if len(match) == 2:
                 m, n = match
-                if m.distance < 0.5 * n.distance:
+                if m.distance < 0.7 * n.distance:
                     matches.append(m)
                     
         # prev_frame.find_world_coordinates_whole_img(my_lidar)
@@ -219,19 +263,21 @@ if __name__=="__main__":
 
         this_frame.find_world_coordinates(matches, False, my_lidar)
 
-        M = fit_transformation(prev_frame.xyz, this_frame.xyz)
+        M, outliers_mask = fit_transformation(this_frame.xyz, prev_frame.xyz)
+
+        this_frame.xyz = this_frame.xyz[:, outliers_mask]
+        prev_frame.xyz = prev_frame.xyz[:, outliers_mask]
 
         print(M @ np.array([[0], [0], [0], [1]]))
         
         # transform first previous frame
-        prev_xyz_transformed = M @ prev_frame.xyz.T
-        prev_xyz_transformed = prev_xyz_transformed.T
+        prev_xyz_transformed = M @ prev_frame.xyz
 
-        if False:
+        if True:
             plt.figure("points")
             ax = plt.axes(projection='3d')
-            ax.scatter3D(this_frame.xyz[:,0], this_frame.xyz[:,1], this_frame.xyz[:,2], color="b")
-            ax.scatter3D(prev_xyz_transformed[:,0], prev_xyz_transformed[:,1], prev_xyz_transformed[:,2], color="r")
+            ax.scatter3D(this_frame.xyz[0,:], this_frame.xyz[1,:], this_frame.xyz[2,:], color="b")
+            ax.scatter3D(prev_xyz_transformed[0,:], prev_xyz_transformed[1,:], prev_xyz_transformed[2,:], color="r")
             ax.set_xlabel("x")
             ax.set_ylabel('y')
             ax.axis('scaled')
