@@ -269,9 +269,11 @@ def filter_keypoints(kp, des, depth_img, display=True):
     laplacian[depth_img<300] = 65536
     laplacian = cv2.GaussianBlur(laplacian, (9,9), 0)
     mask = (laplacian>0.8)
-    mask[-260:,60:] = True # temp fix
-    mask[-130:,:] = True # temp fix
-    mask[:130,:] = True # temp fix
+
+    # Try topological growth on the mask
+    # mask[-260:,60:] = True # temp fix
+    # mask[-130:,:] = True # temp fix
+    # mask[:130,:] = True # temp fix
 
     if display:
         img = np.zeros_like(laplacian)

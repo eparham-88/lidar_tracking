@@ -74,10 +74,6 @@ class Frame:
             u = int(self.kp[i_m].pt[1])
 
             point = my_lidar.getXYZCoords(u, v, self.depth_img[u,v])
-            
-            # print("u, v: {}, {}".format(u, v))
-            # print("X, Y, Z: {}, {}, {}".format(point[0], point[1], point[2]))
-            # point = world_coordinate(u, v, self.depth_img[u,v])
 
             self.xyz[i, :] = point
             
@@ -147,6 +143,27 @@ def fit_transformation(XYZp, XYZ):
 
 
 
+def flip_keypoints(f):
+    return [cv2.KeyPoint(x = k.pt[1], y = k.pt[0], 
+            size = k.size, angle = k.angle, 
+            response = k.response, octave = k.octave, 
+            class_id = k.class_id) for k in f]
+
+
+def drawMatches(frame_1, frame_2, matches):
+    img_1 = cv2.rotate(frame_1.img, cv2.ROTATE_90_CLOCKWISE)
+    img_2 = cv2.rotate(frame_2.img, cv2.ROTATE_90_CLOCKWISE)
+
+    kp_1 = flip_keypoints(frame_1.kp)
+    kp_2 = flip_keypoints(frame_2.kp)
+
+    img3 = cv2.drawMatches(img_2, kp_2,
+                           img_1, kp_1,
+                           matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    cv2.imshow('matches', cv2.rotate(img3, cv2.ROTATE_90_COUNTERCLOCKWISE))
+    cv2.waitKey(0)
+
+
 
 
 
@@ -189,12 +206,12 @@ if __name__=="__main__":
         preliminary_matches = flann.knnMatch(prev_frame.des, this_frame.des, k=2)
 
         # Filter out bad matches below a theshold
-        matches = set()
+        matches = []
         for match in preliminary_matches:
             if len(match) == 2:
                 m, n = match
                 if m.distance < 0.5 * n.distance:
-                    matches.add(m)
+                    matches.append(m)
                     
         # prev_frame.find_world_coordinates_whole_img(my_lidar)
 
@@ -210,17 +227,18 @@ if __name__=="__main__":
         prev_xyz_transformed = M @ prev_frame.xyz.T
         prev_xyz_transformed = prev_xyz_transformed.T
 
-        plt.figure("points")
-        ax = plt.axes(projection='3d')
-        ax.scatter3D(this_frame.xyz[:,0], this_frame.xyz[:,1], this_frame.xyz[:,2], color="b")
-        ax.scatter3D(prev_xyz_transformed[:,0], prev_xyz_transformed[:,1], prev_xyz_transformed[:,2], color="r")
-        ax.set_xlabel("x")
-        ax.set_ylabel('y')
-        ax.axis('scaled')
-        plt.show()
+        if False:
+            plt.figure("points")
+            ax = plt.axes(projection='3d')
+            ax.scatter3D(this_frame.xyz[:,0], this_frame.xyz[:,1], this_frame.xyz[:,2], color="b")
+            ax.scatter3D(prev_xyz_transformed[:,0], prev_xyz_transformed[:,1], prev_xyz_transformed[:,2], color="r")
+            ax.set_xlabel("x")
+            ax.set_ylabel('y')
+            ax.axis('scaled')
+            plt.show()
+        else:
+            drawMatches(this_frame, prev_frame, matches)
 
-
-        # TODO: Look into optical flow openCV algorithms
 
         prev_frame = this_frame
 
