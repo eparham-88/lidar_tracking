@@ -21,20 +21,34 @@ class Frame:
 
     def filter_keypoints(self, display=False):
 
-        # find laplacian to depth_img:
+        # find laplacian of depth_img to determine large deltas in depth
         laplacian = cv2.Laplacian(self.depth_img,cv2.CV_64F)
-        laplacian[self.depth_img<300] = 65536
         laplacian = cv2.GaussianBlur(laplacian, (9,9), 0)
-        mask = (laplacian>0.8)
-        mask[60:,:260] = True # temp fix
-        mask[:,:130] = True # temp fix
-        mask[:,-130:] = True # temp fix
-
         if display:
-            img = np.zeros_like(laplacian)
-            img[mask] = 255
+            cv2.imshow('laplacian', laplacian)
 
-            cv2.imshow('laplacian', img)
+        # add areas that are within ~1m
+        laplacian[self.depth_img<200] = 65536
+        if display:
+            cv2.imshow('laplacian + depth', laplacian)
+
+        # dilate
+        laplacian = cv2.dilate(laplacian, np.ones((5,5),np.uint8), iterations=4)
+        if display:
+            cv2.imshow('dilated', laplacian)
+
+
+        # blur
+        laplacian = cv2.GaussianBlur(laplacian, (19,19), 0)
+        if display:
+            cv2.imshow('blurred', laplacian)
+
+        # Threshold
+        self.mask = (laplacian>350.0)
+        if display:
+            laplacian = np.zeros_like(laplacian)
+            laplacian[self.mask] = 65536
+            cv2.imshow('masked',  laplacian)
             cv2.waitKey(0)
 
         kp_f = []
@@ -46,7 +60,7 @@ class Frame:
             u = int(self.kp[i].pt[0])
             v = int(self.kp[i].pt[1])
 
-            if mask[v,u] == True:
+            if self.mask[v,u] == True:
                 continue
             else:
                 kp_f.append(self.kp[i])
@@ -187,19 +201,25 @@ def least_squares_transformation(XYZp, XYZ):
 
 
 
-def flip_keypoints(f):
-    return [cv2.KeyPoint(x = k.pt[1], y = k.pt[0], 
+def flip_keypoints(f, shape):
+    return [cv2.KeyPoint(x = shape[1]-k.pt[1], y = k.pt[0], 
             size = k.size, angle = k.angle, 
             response = k.response, octave = k.octave, 
             class_id = k.class_id) for k in f]
 
 
 def drawMatches(frame_1, frame_2, matches):
-    img_1 = cv2.rotate(frame_1.img, cv2.ROTATE_90_CLOCKWISE)
-    img_2 = cv2.rotate(frame_2.img, cv2.ROTATE_90_CLOCKWISE)
 
-    kp_1 = flip_keypoints(frame_1.kp)
-    kp_2 = flip_keypoints(frame_2.kp)
+    img_1_masked = cv2.cvtColor(frame_1.img,cv2.COLOR_GRAY2RGB)
+    img_2_masked = cv2.cvtColor(frame_2.img,cv2.COLOR_GRAY2RGB)
+    img_1_masked[frame_1.mask,1] = 0
+    img_2_masked[frame_2.mask,1] = 0
+
+    img_1 = cv2.rotate(img_1_masked, cv2.ROTATE_90_CLOCKWISE)
+    img_2 = cv2.rotate(img_2_masked, cv2.ROTATE_90_CLOCKWISE)
+
+    kp_1 = flip_keypoints(frame_1.kp, img_1.shape)
+    kp_2 = flip_keypoints(frame_2.kp, img_2.shape)
 
     img3 = cv2.drawMatches(img_2, kp_2,
                            img_1, kp_1,
@@ -254,7 +274,7 @@ if __name__=="__main__":
         for match in preliminary_matches:
             if len(match) == 2:
                 m, n = match
-                if m.distance < 0.9 * n.distance:
+                if m.distance < 0.7 * n.distance:
                     matches.append(m)
                     
         # prev_frame.find_world_coordinates_whole_img(my_lidar)
@@ -285,7 +305,7 @@ if __name__=="__main__":
             ax.set_ylabel('y')
             ax.axis('scaled')
             plt.show()
-        elif False:
+        elif True:
             drawMatches(this_frame, prev_frame, matches)
 
         print(str(i) + " of " + str(len(lst)))
