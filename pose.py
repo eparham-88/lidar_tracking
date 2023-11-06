@@ -163,7 +163,7 @@ def fit_transformation(From, To):
         diff = np.linalg.norm(To - M @ From, axis=0)
         diff_ = np.linalg.norm(To_inliers - M @ From_inliers, axis=0)
         std = np.std(diff_)
-        outlier_mask = diff < 1.0*std+np.average(diff)
+        outlier_mask = diff < 0.5*std+np.average(diff)
 
         # plt.figure("differences")
         # plt.plot(diff)
@@ -273,7 +273,12 @@ if __name__=="__main__":
     flann = cv2.FlannBasedMatcher(index_params, search_params)
     prev_frame = None
 
-    poses = np.zeros((len(lst), 12))
+    poses = np.zeros((len(lst), 3))
+    transforms = np.zeros((len(lst), 12))
+    current_transform = np.array([[1, 0, 0, 0],
+                                  [0, 1, 0, 0],
+                                  [0, 0, 1, 0],
+                                  [0, 0, 0, 1]])
 
     for i, filename in enumerate(lst):
 
@@ -302,19 +307,18 @@ if __name__=="__main__":
 
         this_frame.find_world_coordinates(matches, False, my_lidar)
 
-        M, outliers_mask = fit_transformation(this_frame.xyz, prev_frame.xyz)
+        M, inliers_mask = fit_transformation(this_frame.xyz, prev_frame.xyz)
 
-        this_frame.xyz = this_frame.xyz[:, outliers_mask]
-        prev_frame.xyz = prev_frame.xyz[:, outliers_mask]
+        this_frame.xyz = this_frame.xyz[:, inliers_mask]
+        prev_frame.xyz = prev_frame.xyz[:, inliers_mask]
 
-        poses[i, :] = M[:3,:].reshape(-1)
-        if i > 0:
-            poses[i, 3::4] += poses[i-1, 3::4]
-        # print(M)
-        # print(M @ np.array([[0], [0], [0], [1]]))
+        # Store transformations and poses
+        transforms[i, :] = M[:3,:].reshape(-1)
+        current_transform = current_transform @ M
+        pose = current_transform @ np.array([[0], [0], [0], [1]])
+        pose /= pose[3,0]
+        poses[i, :] = pose[:3,0].reshape(-1)
         
-        # transform first previous frame
-        this_frame.xyz = M @ this_frame.xyz
 
         if False:
             plt.figure("points")
@@ -334,7 +338,7 @@ if __name__=="__main__":
     
     plt.figure("poses")
     ax = plt.axes(projection='3d')
-    ax.scatter3D(poses[:,3], poses[:,7], poses[:,11], c=range(poses[:,3].shape[0]))
+    ax.scatter3D(poses[:,0], poses[:,1], poses[:,2], c=range(poses.shape[0]))
     ax.set_xlabel("x")
     ax.set_ylabel('y')
     ax.axis('scaled')
