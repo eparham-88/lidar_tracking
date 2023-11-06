@@ -124,7 +124,7 @@ class Frame:
                 self.xyz[:, i] = point
                 i+= 1
         
-        self.xyz =  my_lidar.lidar_to_sensor_transform @ self.xyz
+        self.xyz =  my_lidar.lidar_To_inlierssensor_transform @ self.xyz
         self.xyz[:3, :] *= 0.001
         
         plt.figure("points")
@@ -143,32 +143,32 @@ class Frame:
 
 
 
-def fit_transformation(XYZp, XYZ):
+def fit_transformation(From, To):
 
-    XYZp_ = np.copy(XYZp)
-    XYZ_ = np.copy(XYZ)
+    From_inliers = np.copy(From)
+    To_inliers = np.copy(To)
 
     M = None
 
-    outlier_final_mask = XYZp_[3, :] > 0
+    outlier_final_mask = From[3, :] > 0
 
     last_sum = 0
     for _ in range(20):
 
         # Find the transformation
-        M = least_squares_transformation(XYZp_, XYZ_)
+        M = find_transform(From_inliers, To_inliers)
         
 
         # Find norm differences between points
-        diff = np.linalg.norm(XYZp - M @ XYZ, axis=0)
-        diff_ = np.linalg.norm(XYZp_ - M @ XYZ_, axis=0)
+        diff = np.linalg.norm(To - M @ From, axis=0)
+        diff_ = np.linalg.norm(To_inliers - M @ From_inliers, axis=0)
         std = np.std(diff_)
-        outlier_mask = diff < 3.0*std+np.average(diff)
+        outlier_mask = diff < 1.0*std+np.average(diff)
 
-        plt.figure("differences")
-        plt.plot(diff)
-        plt.plot(outlier_mask)
-        plt.show()
+        # plt.figure("differences")
+        # plt.plot(diff)
+        # plt.plot(outlier_mask)
+        # plt.show()
 
         if np.sum(outlier_mask) == last_sum or np.sum(outlier_mask) < 10:
             # no outliers or too few remaining points for another round -> exit
@@ -177,38 +177,43 @@ def fit_transformation(XYZp, XYZ):
         # update outliers mask with new bad values
         outlier_final_mask = (outlier_final_mask) & (outlier_mask)
 
-        XYZp_ = XYZp[:, outlier_final_mask]
-        XYZ_ = XYZ[:, outlier_final_mask]
+        From_inliers = From[:, outlier_final_mask]
+        To_inliers = To[:, outlier_final_mask]
         last_sum = np.sum(outlier_mask)
 
     return M, outlier_final_mask
 
 
 
-def least_squares_transformation(XYZp, XYZ):
+def find_transform(From, To, W=None):
     # https://igl.ethz.ch/projects/ARAP/svd_rot.pdf
 
-    B = XYZp[:3, :]
-    A = XYZ[:3, :]
+    # Reconfigure data into 3xn
+    P = From[:3, :]
+    Q = To[:3, :]
 
     # Find centroids
-    Ca = np.mean(A, 1).reshape(-1,1)
-    Cb = np.mean(B, 1).reshape(-1,1)
+    P_bar = np.mean(P, 1).reshape(-1,1)
+    Q_bar = np.mean(Q, 1).reshape(-1,1)
+
+    # Offset by centroids
+    X = P - P_bar
+    Y = Q - Q_bar
 
     # Calculate 3x3 covariance
-    cov = (A-Ca) @ (B-Cb).T
+    if W == None:
+        W = np.eye(X.shape[1])
+    cov = X @ W @ Y.T
 
     # Use SVD to calculate the 3x3 Matrices U and V from coveriance
-    U, _, V = np.linalg.svd(cov)
+    U, _, V_T = np.linalg.svd(cov); V = V_T.T
 
     # Find rotation
-    det = np.linalg.det(V @ U.T)
-    m = np.eye(U.shape[0]); m[-1,-1] = det
-    print(m)
+    m = np.eye(U.shape[0]); m[-1,-1] = np.linalg.det(V @ U.T)
     R = V @ m @ U.T
 
     # Find translation
-    T = Cb - R @ Ca
+    T = Q_bar - R @ P_bar
 
     M = np.vstack((np.hstack((R, T)), np.array([0, 0, 0, 1]) ))
 
@@ -297,7 +302,7 @@ if __name__=="__main__":
 
         this_frame.find_world_coordinates(matches, False, my_lidar)
 
-        M, outliers_mask = fit_transformation(prev_frame.xyz, this_frame.xyz)
+        M, outliers_mask = fit_transformation(this_frame.xyz, prev_frame.xyz)
 
         this_frame.xyz = this_frame.xyz[:, outliers_mask]
         prev_frame.xyz = prev_frame.xyz[:, outliers_mask]
@@ -311,7 +316,7 @@ if __name__=="__main__":
         # transform first previous frame
         this_frame.xyz = M @ this_frame.xyz
 
-        if True:
+        if False:
             plt.figure("points")
             ax = plt.axes(projection='3d')
             ax.scatter3D(this_frame.xyz[0,:], this_frame.xyz[1,:], this_frame.xyz[2,:], color="b")
