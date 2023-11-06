@@ -7,6 +7,7 @@ from lidar_intrinsics import Lidar
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from mpl_toolkits import mplot3d
+import scipy.spatial.transform as rt
 
 
 class Frame:
@@ -180,21 +181,28 @@ def fit_transformation(XYZp, XYZ):
 
 
 def least_squares_transformation(XYZp, XYZ):
-    xs = XYZ[0,:]; ys = XYZ[1,:]; zs = XYZ[2,:]
-    xps = XYZp[0,:]; yps = XYZp[1,:]; zps = XYZp[2,:]
+    # https://stackoverflow.com/questions/20528094/computing-the-3d-transformation-between-two-sets-of-points
 
-    A = np.zeros((3*xs.shape[0], 12))
-    b = np.zeros((3*xs.shape[0], 1))
+    A = XYZp[:3, :]
+    B = XYZ[:3, :]
 
-    A[0::3,0] = xs; A[0::3,1] = ys; A[0::3,2] = zs; A[0::3,3] = 1
-    A[1::3,4] = xs; A[1::3,5] = ys; A[1::3,6] = zs; A[1::3,7] = 1
-    A[2::3,8] = xs; A[2::3,9] = ys; A[2::3,10] = zs; A[2::3,11] = 1
+    # Find centroids
+    Ca = np.mean(A, 1).reshape(-1,1)
+    Cb = np.mean(B, 1).reshape(-1,1)
 
-    b[0::3,0] = xps; b[1::3,0] = yps; b[2::3,0] = zps
+    # Calculate 3x3 covariance
+    cov = (A-Ca) @ (B-Cb).T
 
-    M, _, _, _ = np.linalg.lstsq(A,b)
+    # Use SVD to calculate the 3x3 Matrices U and V from coveriance
+    U, _, V = np.linalg.svd(cov)
 
-    M = np.vstack((M.reshape(3,4), np.array([0,0,0,1])))
+    # Find rotation
+    R = U * V.T
+
+    # Find translation
+    T = Cb - R @ Ca
+
+    M = np.vstack((np.hstack((R, T)), np.array([0, 0, 0, 1]) ))
 
     return M
 
@@ -233,7 +241,7 @@ def drawMatches(frame_1, frame_2, matches):
 
 if __name__=="__main__":
 
-    folder = '2023_10_21_04_10_PM_lidar_camera'
+    folder = '18ft_forward_50_ft_left'
     image_type = 'signal'
     my_lidar = Lidar()
 
@@ -289,6 +297,7 @@ if __name__=="__main__":
         poses[i, :] = M[:3,:].reshape(-1)
         if i > 0:
             poses[i, 3::4] += poses[i-1, 3::4]
+        print(M)
         # print(M @ np.array([[0], [0], [0], [1]]))
         
         # transform first previous frame
