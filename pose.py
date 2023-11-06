@@ -152,21 +152,25 @@ def fit_transformation(XYZp, XYZ):
 
     outlier_final_mask = XYZp_[3, :] > 0
 
+    last_sum = 0
     for _ in range(20):
 
         # Find the transformation
         M = least_squares_transformation(XYZp_, XYZ_)
+        
 
         # Find norm differences between points
         diff = np.linalg.norm(XYZp - M @ XYZ, axis=0)
-        std = np.std(diff)
-        outlier_mask = diff < 0.8*std+np.average(diff)
+        diff_ = np.linalg.norm(XYZp_ - M @ XYZ_, axis=0)
+        std = np.std(diff_)
+        outlier_mask = diff < 3.0*std+np.average(diff)
 
-        # plt.figure("differences")
-        # plt.plot(diff)
-        # plt.show()
+        plt.figure("differences")
+        plt.plot(diff)
+        plt.plot(outlier_mask)
+        plt.show()
 
-        if np.sum(outlier_mask) == outlier_mask.shape[0] or np.sum(outlier_mask) < 10:
+        if np.sum(outlier_mask) == last_sum or np.sum(outlier_mask) < 10:
             # no outliers or too few remaining points for another round -> exit
             break
 
@@ -175,16 +179,17 @@ def fit_transformation(XYZp, XYZ):
 
         XYZp_ = XYZp[:, outlier_final_mask]
         XYZ_ = XYZ[:, outlier_final_mask]
+        last_sum = np.sum(outlier_mask)
 
     return M, outlier_final_mask
 
 
 
 def least_squares_transformation(XYZp, XYZ):
-    # https://stackoverflow.com/questions/20528094/computing-the-3d-transformation-between-two-sets-of-points
+    # https://igl.ethz.ch/projects/ARAP/svd_rot.pdf
 
-    A = XYZp[:3, :]
-    B = XYZ[:3, :]
+    B = XYZp[:3, :]
+    A = XYZ[:3, :]
 
     # Find centroids
     Ca = np.mean(A, 1).reshape(-1,1)
@@ -197,7 +202,10 @@ def least_squares_transformation(XYZp, XYZ):
     U, _, V = np.linalg.svd(cov)
 
     # Find rotation
-    R = U * V.T
+    det = np.linalg.det(V @ U.T)
+    m = np.eye(U.shape[0]); m[-1,-1] = det
+    print(m)
+    R = V @ m @ U.T
 
     # Find translation
     T = Cb - R @ Ca
@@ -297,13 +305,13 @@ if __name__=="__main__":
         poses[i, :] = M[:3,:].reshape(-1)
         if i > 0:
             poses[i, 3::4] += poses[i-1, 3::4]
-        print(M)
+        # print(M)
         # print(M @ np.array([[0], [0], [0], [1]]))
         
         # transform first previous frame
         this_frame.xyz = M @ this_frame.xyz
 
-        if False:
+        if True:
             plt.figure("points")
             ax = plt.axes(projection='3d')
             ax.scatter3D(this_frame.xyz[0,:], this_frame.xyz[1,:], this_frame.xyz[2,:], color="b")
@@ -321,7 +329,7 @@ if __name__=="__main__":
     
     plt.figure("poses")
     ax = plt.axes(projection='3d')
-    ax.scatter3D(poses[:,3], poses[:,7], poses[:,11], color="b")
+    ax.scatter3D(poses[:,3], poses[:,7], poses[:,11], c=range(poses[:,3].shape[0]))
     ax.set_xlabel("x")
     ax.set_ylabel('y')
     ax.axis('scaled')
