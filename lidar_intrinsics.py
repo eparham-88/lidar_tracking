@@ -69,12 +69,13 @@ class Lidar(object):
         
         # a = 0
         
-    def getXYZCoords(self, u, v, r):
+    def getXYZCoords(self, u, v, r_16bit):
         """ 
         u is height (rows)
         v is width (cols)
         """
         # print(r)
+        r = r_16bit * 4 # convert to mm
         
         theta_encoder = 2.0 * np.pi * (1.0 - v / self.scan_width)
         theta_azimuth = 0.0 * (-2.0 * np.pi * (self.beam_azimuth_angles[u] / 360.0))

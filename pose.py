@@ -254,7 +254,7 @@ def drawMatches(frame_1, frame_2, matches):
 
 if __name__=="__main__":
 
-    folder = '18ft_forward_50_ft_left'
+    folder = '50ft_locker_hallway'
     image_type = 'signal'
     my_lidar = Lidar()
 
@@ -264,7 +264,7 @@ if __name__=="__main__":
     lst.sort()
 
     # create items used throughout
-    br = cv2.BRISK_create(thresh=5, octaves=3, patternScale=1.0)
+    br = cv2.BRISK_create(thresh=5, octaves=2, patternScale=1.0)
     index_params = dict(algorithm=6,
                         table_number=6,
                         key_size=12,
