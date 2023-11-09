@@ -11,13 +11,13 @@ import scipy.spatial.transform as rt
 
 
 class Frame:
-    def __init__(self, img_path, depth_path, br):
+    def __init__(self, img_path, depth_path, br, lidar):
         img = cv2.imread(img_path, cv2.COLOR_RGB2BGR)
         self.depth_img = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
         self.img = blur(img)
         self.kp, self.des = br.detectAndCompute(self.img, None)
         self.filter_keypoints()
-        self.xyz = None
+        self.find_world_coordinates(lidar)
 
 
     def filter_keypoints(self, display=False):
@@ -72,12 +72,13 @@ class Frame:
 
         return
     
-    def find_world_coordinates(self, matches, query, my_lidar, display=False):
+    def find_match_coordinates(self, matches, query, display=False):
 
         # clear xyz from previous
-        self.xyz = np.zeros((4, len(matches)))
+        self.match_xyz = np.zeros((4, len(matches)))
+        kp_match = []
+        des_match = []
         
-        kps_filtered = []
 
         for i, match in enumerate(matches):
             if query:
@@ -85,34 +86,52 @@ class Frame:
             else:
                 i_m = match.trainIdx
 
-            v = int(self.kp[i_m].pt[0])
-            u = int(self.kp[i_m].pt[1])
-
-            point = my_lidar.getXYZCoords(u, v, self.depth_img[u,v])
-
-            self.xyz[:, i] = point
+            self.match_xyz[:, i] = self.xyz[:, i_m]
             
-            kps_filtered.append(self.kp[i_m])
-        
-        self.xyz[:3, :] *= 0.001
+            kp_match.append(self.kp[i_m])
+            des_match.append(self.des[i_m])
+
+        self.match_kp = tuple(kp_match)
+        self.match_des = np.uint8(np.asarray(des_match))
 
         if display:
         
             plt.figure("points")
             ax = plt.axes(projection='3d')
-            ax.scatter3D(self.xyz[0,:], self.xyz[1,:], self.xyz[2,:])
+            ax.scatter3D(self.match_xyz[0,:], self.match_xyz[1,:], self.match_xyz[2,:])
             ax.set_xlabel("x")
             ax.set_ylabel('y')
             ax.axis('scaled')
             
-            img2_annotated = cv2.drawKeypoints(self.img, tuple(kps_filtered), None, color=(0,255,0))
+            img2_annotated = cv2.drawKeypoints(self.img, self.match_kp, None, color=(0,255,0))
             plt.figure("img")
             imgplot = plt.imshow(img2_annotated)
 
             plt.show()
 
         return
-        
+    
+    def find_world_coordinates(self, lidar):
+
+        self.xyz = np.zeros((4, len(self.kp)))
+
+        for i, keypoint in enumerate(self.kp):
+            v = int(keypoint.pt[0])
+            u = int(keypoint.pt[1])
+
+            point = lidar.getXYZCoords(u, v, self.depth_img[u,v])
+
+            self.xyz[:, i] = point
+
+        self.xyz[:3, :] *= 0.001
+
+        return
+
+
+    def filter_inliers(self, mask):
+        self.match_xyz = self.match_xyz[:, mask]
+        self.match_des = self.match_des[mask]
+        self.match_kp = tuple(np.array(self.match_kp)[mask])
         
         
     def find_world_coordinates_whole_img(self, my_lidar):
@@ -134,6 +153,13 @@ class Frame:
         ax.set_ylabel('y')
         ax.axis('scaled')
         plt.show()
+
+
+    # def add_previous_frame(self, previous_frame):
+    #     self.xyz = np.hstack((self.xyz, previous_frame.xyz))[:, :1000]
+    #     self.des = np.vstack((self.des, previous_frame.des))[:1000]
+    #     self.kp = np.array(self.kp + previous_frame.kp)[:1000]
+    #     self.kp = tuple(self.kp)
     
 
 
@@ -254,7 +280,7 @@ def drawMatches(frame_1, frame_2, matches):
 
 if __name__=="__main__":
 
-    folder = '50ft_locker_hallway'
+    folder = '50ft_hallway'
     image_type = 'signal'
     my_lidar = Lidar()
 
@@ -285,12 +311,14 @@ if __name__=="__main__":
         if prev_frame == None:
             prev_frame = Frame(os.path.join(wd,folder,image_type,filename),
                                os.path.join(wd,folder,'range',filename),
-                               br)
+                               br,
+                               my_lidar)
             continue
 
         this_frame = Frame(os.path.join(wd,folder,image_type,filename),
                            os.path.join(wd,folder,'range',filename),
-                           br)
+                           br,
+                           my_lidar)
         
         # Use Flann to identify matches between BRISK descriptions
         preliminary_matches = flann.knnMatch(prev_frame.des, this_frame.des, k=2)
@@ -303,14 +331,14 @@ if __name__=="__main__":
                 if m.distance < 0.7 * n.distance:
                     matches.append(m)
 
-        prev_frame.find_world_coordinates(matches, True, my_lidar)
+        prev_frame.find_match_coordinates(matches, True)
 
-        this_frame.find_world_coordinates(matches, False, my_lidar)
+        this_frame.find_match_coordinates(matches, False)
 
-        M, inliers_mask = fit_transformation(this_frame.xyz, prev_frame.xyz)
+        M, inliers_mask = fit_transformation(this_frame.match_xyz, prev_frame.match_xyz)
 
-        this_frame.xyz = this_frame.xyz[:, inliers_mask]
-        prev_frame.xyz = prev_frame.xyz[:, inliers_mask]
+        this_frame.filter_inliers(inliers_mask)
+        prev_frame.filter_inliers(inliers_mask)
 
         # Store transformations and poses
         transforms[i, :] = M[:3,:].reshape(-1)
@@ -323,8 +351,9 @@ if __name__=="__main__":
         if False:
             plt.figure("points")
             ax = plt.axes(projection='3d')
-            ax.scatter3D(this_frame.xyz[0,:], this_frame.xyz[1,:], this_frame.xyz[2,:], color="b")
-            ax.scatter3D(prev_frame.xyz[0,:], prev_frame.xyz[1,:], prev_frame.xyz[2,:], color="r")
+            this_frame_match_xyz = M @ this_frame.match_xyz
+            ax.scatter3D(this_frame_match_xyz[0,:], this_frame_match_xyz[1,:], this_frame_match_xyz[2,:], color="b")
+            ax.scatter3D(prev_frame.match_xyz[0,:], prev_frame.match_xyz[1,:], prev_frame.match_xyz[2,:], color="r")
             ax.set_xlabel("x")
             ax.set_ylabel('y')
             ax.axis('scaled')
