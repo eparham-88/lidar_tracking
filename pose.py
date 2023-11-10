@@ -169,10 +169,11 @@ class Frame:
 
 
 
-def fit_transformation(From, To):
+def fit_transformation(From, To, W=None):
 
     From_inliers = np.copy(From)
     To_inliers = np.copy(To)
+    W_inliers = np.copy(W)
 
     M = None
 
@@ -182,7 +183,7 @@ def fit_transformation(From, To):
     for _ in range(20):
 
         # Find the transformation
-        M = find_transform(From_inliers, To_inliers)
+        M = find_transform(From_inliers, To_inliers, W_inliers)
         
 
         # Find norm differences between points
@@ -191,10 +192,19 @@ def fit_transformation(From, To):
         std = np.std(diff_)
         outlier_mask = diff < 0.5*std+np.average(diff)
 
-        # plt.figure("differences")
-        # plt.plot(diff)
-        # plt.plot(outlier_mask)
-        # plt.show()
+
+        if False:
+            plt.subplot(3, 1, 1)
+            plt.plot(diff, label="magnitude")
+            plt.legend()
+            plt.subplot(3, 1, 2)
+            plt.plot(outlier_mask, label="inlier")
+            plt.legend()
+            plt.subplot(3, 1, 3)
+            if W.size != 0:
+                plt.plot(W, label="weight")
+            plt.legend()
+            plt.show()
 
         if np.sum(outlier_mask) == last_sum or np.sum(outlier_mask) < 10:
             # no outliers or too few remaining points for another round -> exit
@@ -205,6 +215,8 @@ def fit_transformation(From, To):
 
         From_inliers = From[:, outlier_final_mask]
         To_inliers = To[:, outlier_final_mask]
+        if W.size != 0:
+            W_inliers = W[outlier_final_mask]
         last_sum = np.sum(outlier_mask)
 
     return M, outlier_final_mask
@@ -219,17 +231,24 @@ def find_transform(From, To, W=None):
     Q = To[:3, :]
 
     # Find centroids
-    P_bar = np.mean(P, 1).reshape(-1,1)
-    Q_bar = np.mean(Q, 1).reshape(-1,1)
+    if W.size != 0:
+        P_bar = np.sum(P*W, 1).reshape(-1,1) / np.sum(W)
+        Q_bar = np.sum(Q*W, 1).reshape(-1,1) / np.sum(W)
+    else:
+        P_bar = np.mean(P, 1).reshape(-1,1)
+        Q_bar = np.mean(Q, 1).reshape(-1,1)
+
 
     # Offset by centroids
     X = P - P_bar
     Y = Q - Q_bar
 
     # Calculate 3x3 covariance
-    if W == None:
-        W = np.eye(X.shape[1])
-    cov = X @ W @ Y.T
+    if W.size != 0:
+        W_diag = np.diag(W)
+    else:
+        W_diag = np.eye(X.shape[1])
+    cov = X @ W_diag @ Y.T
 
     # Use SVD to calculate the 3x3 Matrices U and V from coveriance
     U, _, V_T = np.linalg.svd(cov); V = V_T.T
@@ -280,7 +299,13 @@ def drawMatches(frame_1, frame_2, matches):
 
 if __name__=="__main__":
 
-    folder = '50ft_hallway'
+    # folder = '18ft_forward_50_ft_left'
+    # folder = '50ft_hallway'
+    # folder = '50ft_locker_hallway'
+    folder = '120X70X120X71ft_square'
+    # folder = '250_room_square_1'
+    # folder = '250_room_square_2'
+    # folder = '2023_10_21_04_10_PM_lidar_camera'
     image_type = 'signal'
     my_lidar = Lidar()
 
@@ -325,17 +350,31 @@ if __name__=="__main__":
 
         # Filter out bad matches below a theshold
         matches = []
+        weights = []
         for match in preliminary_matches:
-            if len(match) == 2:
-                m, n = match
-                if m.distance < 0.7 * n.distance:
-                    matches.append(m)
+            if len(match) == 0:
+                continue
+            m_d = match[0].distance
+            if len(match) >= 2:
+                n_d = match[1].distance
+            else:
+                n_d = 300
+
+            if m_d < 0.7 * n_d:
+
+                matches.append(match[0])
+                if False:
+                    # Weighted
+                    w = max(200 - m_d, 0)
+                    weights.append(w)
+                
+        weights = np.array(weights)
 
         prev_frame.find_match_coordinates(matches, True)
 
         this_frame.find_match_coordinates(matches, False)
 
-        M, inliers_mask = fit_transformation(this_frame.match_xyz, prev_frame.match_xyz)
+        M, inliers_mask = fit_transformation(this_frame.match_xyz, prev_frame.match_xyz, weights)
 
         this_frame.filter_inliers(inliers_mask)
         prev_frame.filter_inliers(inliers_mask)
