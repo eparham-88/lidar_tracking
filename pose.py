@@ -190,7 +190,7 @@ def fit_transformation(From, To, W=None):
         diff = np.linalg.norm(To - M @ From, axis=0)
         diff_ = np.linalg.norm(To_inliers - M @ From_inliers, axis=0)
         std = np.std(diff_)
-        outlier_mask = diff < 0.5*std+np.average(diff)
+        outlier_mask = diff < 0.8*std+np.average(diff)
 
 
         if False:
@@ -299,13 +299,13 @@ def drawMatches(frame_1, frame_2, matches):
 
 if __name__=="__main__":
 
-    # folder = '18ft_forward_50_ft_left'
-    # folder = '50ft_hallway'
-    # folder = '50ft_locker_hallway'
-    folder = '120X70X120X71ft_square'
-    # folder = '250_room_square_1'
-    # folder = '250_room_square_2'
-    # folder = '2023_10_21_04_10_PM_lidar_camera'
+    folder = '18ft_forward_50_ft_left' # Good
+    # folder = '50ft_hallway' # Good
+    # folder = '50ft_locker_hallway' # Good
+    # folder = '120X70X120X71ft_square' # Poor
+    # folder = '250_room_square_1' # Good
+    # folder = '250_room_square_2' # Good
+    # folder = '2023_10_21_04_10_PM_lidar_camera' # Poor
     image_type = 'signal'
     my_lidar = Lidar()
 
@@ -315,7 +315,7 @@ if __name__=="__main__":
     lst.sort()
 
     # create items used throughout
-    br = cv2.BRISK_create(thresh=5, octaves=2, patternScale=1.0)
+    br = cv2.BRISK_create(thresh=7, octaves=3, patternScale=1.0)
     index_params = dict(algorithm=6,
                         table_number=6,
                         key_size=12,
@@ -330,6 +330,7 @@ if __name__=="__main__":
                                   [0, 1, 0, 0],
                                   [0, 0, 1, 0],
                                   [0, 0, 0, 1]])
+    map_points = np.array([])
 
     for i, filename in enumerate(lst):
 
@@ -385,6 +386,11 @@ if __name__=="__main__":
         pose = current_transform @ np.array([[0], [0], [0], [1]])
         pose /= pose[3,0]
         poses[i, :] = pose[:3,0].reshape(-1)
+
+        if len(map_points) != 0:
+            map_points = np.hstack((map_points, (current_transform @ this_frame.match_xyz)[:,::20]))
+        else:
+            map_points = (current_transform @ this_frame.match_xyz)[:,::20]
         
 
         if False:
@@ -406,6 +412,7 @@ if __name__=="__main__":
     
     plt.figure("poses")
     ax = plt.axes(projection='3d')
+    ax.scatter3D(map_points[0,:], map_points[1,:], map_points[2,:], color="r", alpha=0.2)
     ax.scatter3D(poses[:,0], poses[:,1], poses[:,2], c=range(poses.shape[0]))
     ax.set_xlabel("x")
     ax.set_ylabel('y')
