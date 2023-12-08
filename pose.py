@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from mpl_toolkits import mplot3d
 import scipy.spatial.transform as rt
+import time
 
 
 class Frame:
@@ -17,7 +18,8 @@ class Frame:
         self.img = blur(img)
         self.kp, self.des = br.detectAndCompute(self.img, None)
         self.filter_keypoints()
-        self.find_world_coordinates(lidar)
+        # self.find_world_coordinates(lidar)
+        self.find_world_coordinates_vectorized(lidar)
 
 
     def filter_keypoints(self, display=False):
@@ -127,46 +129,34 @@ class Frame:
 
         return
 
+    def find_world_coordinates_vectorized(self, lidar):
+        u_values = np.round([kp.pt[1] for kp in self.kp]).astype(int)
+        v_values = np.round([kp.pt[0] for kp in self.kp]).astype(int)
+        
+        depth_values = self.depth_img[u_values, v_values]
+
+        # Vectorized calculation of world coordinates
+        points = lidar.getXYZCoords_vectorized(u_values, v_values, depth_values)
+
+        # Transpose the result for easier manipulation
+        points = points.T
+
+        # Convert units
+        points[:3, :] *= 0.001
+
+        self.xyz = points
+
 
     def filter_inliers(self, mask):
         self.match_xyz = self.match_xyz[:, mask]
         self.match_des = self.match_des[mask]
         self.match_kp = tuple(np.array(self.match_kp)[mask])
-        
-        
-    def find_world_coordinates_whole_img(self, my_lidar):
-        self.xyz = np.zeros((self.depth_img.shape[0] * self.depth_img.shape[1], 4))
-        i = 0
-        for u in range(self.depth_img.shape[0]):
-            for v in range(self.depth_img.shape[1]):
-                point = my_lidar.getXYZCoords(u, v, self.depth_img[u,v])
-                self.xyz[:, i] = point
-                i+= 1
-        
-        self.xyz =  my_lidar.lidar_To_inlierssensor_transform @ self.xyz
-        self.xyz[:3, :] *= 0.001
-        
-        plt.figure("points")
-        ax = plt.axes(projection='3d')
-        ax.scatter3D(self.xyz[0,:], self.xyz[1,:], self.xyz[2,:])
-        ax.set_xlabel("x")
-        ax.set_ylabel('y')
-        ax.axis('scaled')
-        plt.show()
-
-
+    
     # def add_previous_frame(self, previous_frame):
     #     self.xyz = np.hstack((self.xyz, previous_frame.xyz))[:, :1000]
     #     self.des = np.vstack((self.des, previous_frame.des))[:1000]
     #     self.kp = np.array(self.kp + previous_frame.kp)[:1000]
     #     self.kp = tuple(self.kp)
-    
-
-
-
-
-
-
 
 
 def fit_transformation(From, To, W=None):
@@ -265,8 +255,6 @@ def find_transform(From, To, W=None):
     return M
 
 
-
-
 def flip_keypoints(f, shape):
     return [cv2.KeyPoint(x = shape[1]-k.pt[1], y = k.pt[0], 
             size = k.size, angle = k.angle, 
@@ -292,9 +280,6 @@ def drawMatches(frame_1, frame_2, matches):
                            matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
     cv2.imshow('matches', cv2.rotate(img3, cv2.ROTATE_90_COUNTERCLOCKWISE))
     cv2.waitKey(0)
-
-
-
 
 
 if __name__=="__main__":
@@ -331,6 +316,8 @@ if __name__=="__main__":
                                   [0, 0, 1, 0],
                                   [0, 0, 0, 1]])
     map_points = np.array([])
+    
+    start = time.process_time()
 
     for i, filename in enumerate(lst):
 
@@ -406,10 +393,10 @@ if __name__=="__main__":
         elif False:
             drawMatches(this_frame, prev_frame, matches)
 
-        print(str(i) + " of " + str(len(lst)))
+        # print(str(i) + " of " + str(len(lst)))
         prev_frame = this_frame
 
-    
+    print("time: ", time.process_time() - start)
     plt.figure("poses")
     ax = plt.axes(projection='3d')
     ax.scatter3D(map_points[0,:], map_points[1,:], map_points[2,:], color="r", alpha=0.2)

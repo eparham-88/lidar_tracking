@@ -84,16 +84,37 @@ class Lidar(object):
         x = (r - self.n) * np.cos(theta_encoder + theta_azimuth) * np.cos(phi) + self.beam_to_lidar_transform[0,3] * np.cos(theta_encoder)
         y = (r - self.n) * np.sin(theta_encoder + theta_azimuth) * np.cos(phi) + self.beam_to_lidar_transform[0,3] + np.sin(theta_encoder)
         z = (r - self.n) * np.sin(phi) + self.beam_to_lidar_transform[2,3]
-        
-        # x = (r - self.n)*np.cos(self.theta_encoder[measurement_id] + self.theta_azimuth[i])*np.cos(self.phi[i]) + (self.beam_to_lidar_transform[0][3])*np.cos(self.theta_encoder[measurement_id])
-        # y = (r - self.n)*np.sin(self.theta_encoder[measurement_id] + self.theta_azimuth[i])*np.cos(self.phi[i]) + (self.beam_to_lidar_transform[0][3])*np.sin(self.theta_encoder[measurement_id])
-        # z = (r - self.n)*np.sin(self.phi[i]) + (self.beam_to_lidar_transform[2,3])
-
 
         # Correct for lidar to sensor
         homogeneous = self.lidar_to_sensor_transform @ np.array([[x], [y], [z], [1]])
         homogeneous /= homogeneous[3,0]
         
+        return homogeneous.T
+    
+    def getXYZCoords_vectorized(self, u, v, r_16bit):
+        """ 
+        u is height (rows)
+        v is width (cols)
+        """
+        # print(r)
+        r = r_16bit * 4 # convert to mm
+        
+        theta_encoder = 2.0 * np.pi * (1.0 - v / self.scan_width)
+        theta_azimuth = 0.0 * (-2.0 * np.pi * (self.beam_azimuth_angles[u] / 360.0))
+        phi = 2.0 * np.pi * (self.beam_altitude_angles[u] / 360.0)
+        
+        x = (r - self.n) * np.cos(theta_encoder + theta_azimuth) * np.cos(phi) + self.beam_to_lidar_transform[0,3] * np.cos(theta_encoder)
+        y = (r - self.n) * np.sin(theta_encoder + theta_azimuth) * np.cos(phi) + self.beam_to_lidar_transform[0,3] + np.sin(theta_encoder)
+        z = (r - self.n) * np.sin(phi) + self.beam_to_lidar_transform[2,3]
+
+        result = np.ones((len(u), 4))
+        result[:, 0] = x
+        result[:, 1] = y
+        result[:, 2] = z
+        
+        homogeneous = self.lidar_to_sensor_transform @ result.T
+        homogeneous /= homogeneous[3, :]
+
         return homogeneous.T
     
     def setScanWidth(self, width):
